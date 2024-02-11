@@ -3,6 +3,19 @@ import json
 import redis
 import os
 import glob
+import re
+import codecs
+
+
+def extrair_versao_do_arquivo(nome_base_arquivo):
+    # Use regex para extrair a versão
+    padrao_versao = re.compile(r'TabelaIBPTax\w+([0-9]+\.[0-9]+\.[A-Za-z])\.csv')
+    match = padrao_versao.search(nome_base_arquivo)
+    
+    if match:
+        return match.group(1)
+    else:
+        return None
 
 def converter_para_numero(valor):
     if valor:
@@ -13,7 +26,7 @@ def converter_para_numero(valor):
     else:
         return 0  # Se estiver vazio, retornar 0
 
-def processar_arquivo_csv(arquivo_csv, redis_conn):
+def processar_arquivo_csv(arquivo_csv, redis_conn, versao):
     mapeamento_campos = {
         'codigo': 'Codigo',
         'UF': 'UF',
@@ -35,10 +48,11 @@ def processar_arquivo_csv(arquivo_csv, redis_conn):
     nome_base_arquivo = os.path.basename(arquivo_csv)
     uf_do_arquivo = nome_base_arquivo[len('TabelaIBPTax'):len('TabelaIBPTax')+2]
 
-    with open(arquivo_csv, 'r', encoding='utf-8') as arquivo_csv:
+    with codecs.open(arquivo_csv, 'r', encoding='latin-1') as arquivo_csv:
         leitor_csv = csv.DictReader(arquivo_csv, delimiter=';')
         for linha in leitor_csv:
             linha['UF'] = uf_do_arquivo
+
 
             # Converter os campos para números
             campos_numericos = ['estadual', 'ex', 'importadosfederal', 'municipal', 'nacionalfederal']
@@ -55,7 +69,7 @@ def processar_arquivo_csv(arquivo_csv, redis_conn):
 pasta_projetos = os.path.join(os.path.dirname(__file__), '')
 
 # Padrão do nome dos arquivos CSV
-padrao_nome_arquivo = os.path.join(pasta_projetos, 'TabelaIBPTax*23.2.F.csv')
+padrao_nome_arquivo = os.path.join(pasta_projetos, 'TabelaIBPTax*.csv')
 
 # Obter lista de arquivos correspondentes ao padrão
 arquivos_csv = glob.glob(padrao_nome_arquivo)
@@ -65,10 +79,12 @@ redis_conn = redis.StrictRedis(host='172.17.0.2', port='6379', db=0)
 
 # Iterar sobre os arquivos CSV
 for arquivo_csv in arquivos_csv:
-    processar_arquivo_csv(arquivo_csv, redis_conn)
-
-print("Dados inseridos no Redis com sucesso!")
-
-
-
-
+    nome_base_arquivo = os.path.basename(arquivo_csv)
+    
+    # Extrair a versão do nome do arquivo
+    versao = extrair_versao_do_arquivo(nome_base_arquivo)
+    
+    if versao:
+        processar_arquivo_csv(arquivo_csv, redis_conn, versao)
+    else:
+        print(f'Erro ao extrair a versão do arquivo: {arquivo_csv}')
